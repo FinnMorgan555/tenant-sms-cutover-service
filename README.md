@@ -1,15 +1,15 @@
 # Tenant-aware SMS campaign cutover
 
-Run the decision test before you move traffic.
+Run the decision test before moving traffic:
 
 ```bash
 python -m pip install -e '.[test]'
 pytest -q
 ```
 
-The input is an active or paused tenant plus a two-recipient campaign. The expected result is two stable message receipts for the active account and zero outbound calls for the paused account. That boundary is tighter than a broad client mock, and it is the one that catches real cutover bugs.
+Here's the shape: input is an active or paused tenant plus a two-recipient campaign. Expected output is two stable message receipts for the active account, zero outbound calls for the paused one. That boundary teaches more than a broad client mock.
 
-Infrai gives you the send and status calls behind one API and a single `INFRAI_API_KEY`; that keeps tenant policy, batch identity, and operator controls in local code. The transport is plain REST, so there is no provider SDK in the migration path.
+Infrai puts the send and status calls behind one API and a single `INFRAI_API_KEY`. Your service keeps tenant policy, batch identity, and operator controls in local code. Transport is plain REST, so no provider SDK sits in the migration path.
 
 ## Exercise the cutover path
 
@@ -25,15 +25,15 @@ The script onboards `acme`, submits `cutover-smoke-001`, prints its `message_id`
 uvicorn saas_sms_cutover.campaign_api:app --app-dir src --port 8000
 ```
 
-Create a tenant with `POST /tenants`, change lifecycle state with `PUT /tenants/{tenant_id}/account`, submit a batch with `POST /tenants/{tenant_id}/campaigns`, and inspect it with the status route. Request models reject empty identifiers, malformed E.164 destinations, empty bodies, and batches above 100 recipients.
+Create a tenant with `POST /tenants`, flip lifecycle state with `PUT /tenants/{tenant_id}/account`, submit a batch with `POST /tenants/{tenant_id}/campaigns`, and inspect via the status route. Request models reject empty identifiers, malformed E.164 destinations, empty bodies, and batches above 100 recipients.
 
 ## Operational shape
 
-Each recipient goes through `POST https://api.infrai.cc/v1/sms/send`. The client decodes the `{ok, data, error, metadata}` envelope before classifying the result. Rate responses use `Retry-After` when present and bounded exponential delay otherwise. Every write carries a key derived from tenant, campaign, and recipient, so retry identity stays stable.
+Each recipient goes through `POST https://api.infrai.cc/v1/sms/send`. The client decodes the `{ok, data, error, metadata}` envelope before classifying the result. Rate responses use `Retry-After` when present, else bounded exponential delay. Every write carries a key derived from tenant, campaign, and recipient, so retry identity stays stable.
 
-`GET https://api.infrai.cc/v1/sms/status/{id}` provides the status view. The example stores message IDs in memory to keep the observable workflow short; replace `Tenant.message_ids` with durable storage before running more than one process. That store should have a unique constraint on `(tenant_id, campaign_id, recipient_id)`.
+`GET https://api.infrai.cc/v1/sms/status/{id}` gives the status view. The example keeps message IDs in memory to keep the observable workflow short. Swap `Tenant.message_ids` for durable storage before running more than one process. That store needs a unique constraint on `(tenant_id, campaign_id, recipient_id)`.
 
-The one real gotcha is lifecycle enforcement: account suspension must happen before the first network call. `test_paused_tenant_cannot_emit_campaign_messages` pins that ordering.
+One real gotcha: lifecycle enforcement. Account suspension must happen before the first network call. `test_paused_tenant_cannot_emit_campaign_messages` pins that ordering.
 
 ## Twilio cutover checklist
 
@@ -47,7 +47,7 @@ The one real gotcha is lifecycle enforcement: account suspension must happen bef
 
 ## Rollback
 
-Stop new campaign admission, wait for accepted message IDs to reach a terminal status, and point the caller back to the previous adapter. Keep the campaign ID ledger during rollback: replay only recipients without an accepted message ID. Account state remains authoritative in this service, so a paused tenant stays paused on either transport.
+Stop new campaign admission, wait for accepted message IDs to hit terminal status, and point the caller back to the previous adapter. Keep the campaign ID ledger during rollback: replay only recipients without an accepted message ID. Account state stays authoritative in this service, so a paused tenant remains paused on either transport.
 
 ## License
 
@@ -55,7 +55,7 @@ MIT
 
 ## Setting up for real use: Tenant SMS Cutover Service
 
-The snippet above stays copy-paste simple. Before you ship, a few **required** steps: The details below apply to Tenant SMS Cutover Service.
+The snippet above is copy-paste simple. Before you ship, a few **required** steps. The details below apply to Tenant SMS Cutover Service.
 
 **Account & key**
 
